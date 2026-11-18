@@ -1,0 +1,1734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FALCON – ESP32-S3 Audio Monitor</title>
+  <meta name="description" content="FALCON real-time audio monitor for ESP32-S3 edge devices. Live PCM stream visualization, recordings management and audio quality analysis." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ─── RESET & TOKENS ─────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f1117;
+      --bg2:       #151820;
+      --surface:   #1c2030;
+      --surface2:  #232840;
+      --border:    rgba(255,255,255,0.07);
+      --border2:   rgba(255,255,255,0.12);
+      --accent:    #3b82f6;
+      --accent2:   #6366f1;
+      --green:     #22c55e;
+      --amber:     #f59e0b;
+      --red:       #ef4444;
+      --text:      #e2e8f0;
+      --text2:     #94a3b8;
+      --text3:     #64748b;
+      --mono:      'JetBrains Mono', monospace;
+      --radius:    10px;
+      --radius-lg: 16px;
+      --shadow:    0 4px 24px rgba(0,0,0,0.5);
+      --transition: 0.18s ease;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      font-size: 13px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ─── TOPBAR ─────────────────────────────────────────────────── */
+    #topbar {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      height: 52px;
+      padding: 0 20px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-right: 32px;
+      flex-shrink: 0;
+    }
+    .brand-icon {
+      width: 34px; height: 34px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+      box-shadow: 0 2px 10px rgba(99,102,241,0.4);
+    }
+    .brand-text { line-height: 1.1; }
+    .brand-name { font-weight: 700; font-size: 15px; letter-spacing: 0.06em; color: var(--text); }
+    .brand-sub  { font-size: 10px; color: var(--text3); font-weight: 400; }
+
+    /* Nav tabs */
+    .nav-tabs {
+      display: flex;
+      height: 100%;
+      align-items: stretch;
+      gap: 2px;
+    }
+    .nav-tab {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 18px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text2);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: color var(--transition), border-color var(--transition);
+      user-select: none;
+      white-space: nowrap;
+    }
+    .nav-tab:hover { color: var(--text); }
+    .nav-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .nav-tab svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+    /* Right controls */
+    .topbar-right {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .volume-wrap {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text2);
+    }
+    .volume-wrap svg { width: 14px; height: 14px; }
+    .volume-slider {
+      -webkit-appearance: none;
+      width: 72px; height: 4px;
+      background: linear-gradient(to right, var(--accent) 60%, rgba(255,255,255,0.15) 60%);
+      border-radius: 2px;
+      cursor: pointer;
+    }
+    .volume-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 12px; height: 12px;
+      background: #fff;
+      border-radius: 50%;
+      border: 2px solid var(--accent);
+    }
+
+    .topbar-btn {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 12px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border2);
+      background: var(--surface);
+      color: var(--text2);
+      font-size: 12px; font-weight: 500;
+      cursor: pointer;
+      transition: background var(--transition), color var(--transition);
+    }
+    .topbar-btn:hover { background: var(--surface2); color: var(--text); }
+    .topbar-btn svg { width: 12px; height: 12px; }
+
+    .status-pill {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 12px;
+      border-radius: 20px;
+      border: 1px solid var(--border2);
+      background: var(--surface);
+      font-size: 11px; font-weight: 600;
+      letter-spacing: 0.03em;
+    }
+    .status-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--text3);
+    }
+    .status-dot.online  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .status-dot.offline { background: var(--red); }
+    .status-dot.idle    { background: var(--amber); }
+
+    .icon-btn {
+      width: 30px; height: 30px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text2);
+      cursor: pointer;
+      transition: background var(--transition);
+    }
+    .icon-btn:hover { background: var(--surface); color: var(--text); }
+    .icon-btn svg { width: 14px; height: 14px; }
+
+    /* ─── PAGE TABS ──────────────────────────────────────────────── */
+    .tab-page { display: none; flex: 1; overflow-y: auto; }
+    .tab-page.active { display: block; }
+
+    /* ─── MAIN LAYOUT ────────────────────────────────────────────── */
+    .page-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px 24px 40px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* ─── CARD BASE ──────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 16px 20px;
+    }
+    .card-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--text);
+      margin-bottom: 14px;
+    }
+    .card-title svg { width: 15px; height: 15px; color: var(--accent); }
+
+    /* ─── HARDWARE ENDPOINT CARD ─────────────────────────────────── */
+    #hw-card {
+      position: relative;
+    }
+    .hw-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      color: var(--text3);
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .hw-title {
+      font-size: 18px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .hw-title svg { width: 18px; height: 18px; color: var(--accent2); }
+    .hw-status {
+      position: absolute;
+      top: 16px; right: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .hw-badge {
+      display: flex; align-items: center; gap: 5px;
+      font-size: 11px; font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 20px;
+      border: 1px solid;
+    }
+    .hw-badge.disconnected { color: var(--red);   border-color: rgba(239,68,68,0.3);  background: rgba(239,68,68,0.08); }
+    .hw-badge.connected    { color: var(--green); border-color: rgba(34,197,94,0.3);  background: rgba(34,197,94,0.08); }
+    .hw-badge.idle         { color: var(--text2); border-color: var(--border2); background: var(--surface2); }
+    .hw-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+    .hw-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .hw-cell {
+      padding: 12px 16px;
+      border-right: 1px solid var(--border);
+    }
+    .hw-cell:last-child { border-right: none; }
+    .hw-cell-label {
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--text3);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-bottom: 4px;
+    }
+    .hw-cell-label svg { width: 11px; height: 11px; }
+    .hw-cell-value { font-weight: 700; font-size: 14px; color: var(--text); }
+    .hw-cell-sub { font-size: 10px; color: var(--text3); margin-top: 2px; }
+
+    .hw-grid2 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0;
+      border: 1px solid var(--border);
+      border-top: none;
+      border-radius: 0 0 var(--radius) var(--radius);
+      overflow: hidden;
+    }
+    .hw-cell2 {
+      padding: 10px 16px;
+      border-right: 1px solid var(--border);
+    }
+    .hw-cell2:last-child { border-right: none; }
+    .hw-cell2-label { font-size: 10px; color: var(--text3); margin-bottom: 3px; }
+    .hw-cell2-value { font-weight: 700; font-size: 14px; }
+    .hw-cell2-value.accent { color: var(--accent); }
+    .hw-cell2-sub { font-size: 10px; color: var(--text3); }
+
+    /* ─── ACTION BAR ─────────────────────────────────────────────── */
+    .action-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: flex; align-items: center; gap: 6px;
+      padding: 7px 14px;
+      border-radius: var(--radius);
+      font-size: 12px; font-weight: 600;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all var(--transition);
+      white-space: nowrap;
+    }
+    .btn svg { width: 13px; height: 13px; flex-shrink: 0; }
+    .btn-record {
+      background: #dc2626;
+      color: #fff;
+      border-color: rgba(220,38,38,0.5);
+      box-shadow: 0 0 0 0 rgba(220,38,38,0.4);
+    }
+    .btn-record:hover { background: #b91c1c; box-shadow: 0 0 12px rgba(220,38,38,0.3); }
+    .btn-record.recording {
+      animation: pulse-red 1.2s ease infinite;
+    }
+    @keyframes pulse-red {
+      0%,100% { box-shadow: 0 0 0 0 rgba(220,38,38,0.5); }
+      50%      { box-shadow: 0 0 0 6px rgba(220,38,38,0); }
+    }
+    .btn-secondary {
+      background: var(--surface2);
+      color: var(--text);
+      border-color: var(--border2);
+    }
+    .btn-secondary:hover { background: #2d3455; }
+    .btn-primary {
+      background: rgba(59,130,246,0.15);
+      color: var(--accent);
+      border-color: rgba(59,130,246,0.3);
+    }
+    .btn-primary:hover { background: rgba(59,130,246,0.25); }
+    .btn-danger {
+      background: rgba(239,68,68,0.1);
+      color: var(--red);
+      border-color: rgba(239,68,68,0.25);
+    }
+    .btn-danger:hover { background: rgba(239,68,68,0.2); }
+    .action-spacer { flex: 1; }
+
+    /* ─── WAVEFORM SECTION ───────────────────────────────────────── */
+    .waveform-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .waveform-title {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-weight: 600;
+      font-size: 13px;
+    }
+    .waveform-title svg { width: 14px; height: 14px; color: var(--accent); }
+    .mode-tabs {
+      display: flex;
+      gap: 2px;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 2px;
+    }
+    .mode-tab {
+      padding: 3px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      color: var(--text2);
+      transition: background var(--transition), color var(--transition);
+    }
+    .mode-tab.active { background: var(--surface2); color: var(--text); }
+    .wf-controls {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .tw-select {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--text2);
+    }
+    .tw-select select {
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      color: var(--text);
+      font-size: 11px;
+      padding: 3px 6px;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .freeze-btn {
+      display: flex; align-items: center; gap: 5px;
+      font-size: 11px; color: var(--text2);
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: 5px;
+      padding: 3px 9px;
+      cursor: pointer;
+      transition: color var(--transition);
+    }
+    .freeze-btn svg { width: 11px; height: 11px; }
+    .freeze-btn:hover { color: var(--text); }
+    .freeze-btn.frozen { color: var(--amber); border-color: rgba(245,158,11,0.4); }
+
+    .waveform-body {
+      display: flex;
+      gap: 12px;
+    }
+    .canvas-wrap {
+      flex: 1;
+      background: #060810;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      position: relative;
+      overflow: hidden;
+      min-height: 200px;
+    }
+    #waveCanvas {
+      display: block;
+      width: 100%;
+      height: 200px;
+    }
+    .no-stream-label {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--text3);
+      font-weight: 500;
+    }
+    .no-stream-label svg { width: 13px; height: 13px; }
+    .canvas-tspan {
+      position: absolute;
+      bottom: 6px; right: 8px;
+      font-size: 9px;
+      color: var(--text3);
+      font-family: var(--mono);
+    }
+
+    .amplitude-panel {
+      width: 200px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .amp-title {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text3);
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .amp-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+    }
+    .amp-row-label { color: var(--text2); }
+    .amp-row-val { font-family: var(--mono); font-weight: 600; color: var(--text); }
+    .amp-bar-wrap { position: relative; height: 4px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden; }
+    .amp-bar { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 2px; transition: width 0.1s linear; }
+
+    .amp-ref {
+      border-top: 1px solid var(--border);
+      padding-top: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .amp-ref-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: var(--text3);
+    }
+    .amp-ref-row span:last-child { font-family: var(--mono); }
+
+    .quant-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: var(--text3);
+      border-top: 1px solid var(--border);
+      padding-top: 8px;
+    }
+
+    /* ─── QUALITY CARD ───────────────────────────────────────────── */
+    .quality-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 16px 20px;
+    }
+    .quality-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .quality-title {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-weight: 600;
+      font-size: 13px;
+    }
+    .quality-title svg { width: 14px; height: 14px; color: var(--accent2); }
+    .quality-target {
+      font-size: 11px;
+      color: var(--text3);
+    }
+    .quality-target span { color: var(--amber); font-weight: 500; }
+
+    .quality-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .quality-cell {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+    }
+    .quality-cell-label {
+      font-size: 10px;
+      color: var(--text3);
+      margin-bottom: 4px;
+    }
+    .quality-cell-value {
+      font-weight: 700;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .quality-cell-value .check { color: var(--green); font-size: 12px; }
+    .quality-cell-sub { font-size: 10px; color: var(--text3); margin-top: 2px; }
+
+    .pipeline-box {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+    }
+    .pipeline-box-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text2);
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .pipeline-box-title svg { width: 12px; height: 12px; color: var(--accent2); }
+    .pipeline-box-text {
+      font-size: 11px;
+      color: var(--text3);
+      line-height: 1.6;
+    }
+    .pipeline-box-text em { color: var(--text2); font-style: normal; }
+
+    /* ─── RECORDINGS PAGE ────────────────────────────────────────── */
+    .rec-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 4px;
+    }
+    .rec-header-title {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-weight: 700;
+      font-size: 16px;
+    }
+    .rec-count-badge {
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: 20px;
+      font-size: 11px;
+      color: var(--text2);
+      padding: 2px 8px;
+    }
+    .rec-storage-note {
+      font-size: 11px;
+      color: var(--text3);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .rec-storage-note svg { width: 11px; height: 11px; }
+
+    /* Refresh button in header */
+    .rec-refresh-btn {
+      display: flex; align-items: center; gap: 5px;
+      padding: 5px 12px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border2);
+      background: var(--surface2);
+      color: var(--text2);
+      font-size: 11px; font-weight: 500;
+      cursor: pointer;
+      transition: background var(--transition), color var(--transition);
+      margin-left: auto;
+    }
+    .rec-refresh-btn:hover { background: #2d3455; color: var(--text); }
+    .rec-refresh-btn svg { width: 12px; height: 12px; }
+    .rec-refresh-btn.spinning svg { animation: spin 0.8s linear infinite; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+    .rec-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 60px 20px;
+      color: var(--text3);
+    }
+    .rec-empty svg { width: 52px; height: 52px; opacity: 0.35; }
+    .rec-empty-title { font-size: 14px; font-weight: 600; color: var(--text2); }
+    .rec-empty-sub { font-size: 12px; text-align: center; max-width: 340px; line-height: 1.6; }
+
+    .rec-list { display: flex; flex-direction: column; gap: 10px; }
+
+    .rec-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 14px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: border-color var(--transition), box-shadow var(--transition);
+    }
+    .rec-card:hover {
+      border-color: var(--border2);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+    .rec-card.deleting {
+      opacity: 0.5;
+      pointer-events: none;
+      transition: opacity 0.3s;
+    }
+    .rec-card-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .rec-icon {
+      width: 36px; height: 36px;
+      background: rgba(99,102,241,0.15);
+      border: 1px solid rgba(99,102,241,0.25);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--accent2);
+      flex-shrink: 0;
+    }
+    .rec-icon svg { width: 16px; height: 16px; }
+    .rec-meta { flex: 1; min-width: 0; }
+    .rec-name { font-weight: 600; font-size: 12px; color: var(--text); margin-bottom: 1px; }
+    .rec-id { font-family: var(--mono); font-size: 10px; color: var(--text3); font-weight: 400; }
+    .rec-details {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-top: 2px;
+    }
+    .rec-detail {
+      font-size: 11px;
+      color: var(--text3);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .rec-detail svg { width: 10px; height: 10px; }
+    .rec-detail span { color: var(--text2); font-weight: 500; }
+    .rec-actions {
+      display: flex;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .rec-btn {
+      display: flex; align-items: center; gap: 5px;
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 11px; font-weight: 500;
+      cursor: pointer;
+      border: 1px solid var(--border2);
+      background: var(--surface2);
+      color: var(--text2);
+      transition: background var(--transition), color var(--transition);
+    }
+    .rec-btn:hover { background: #2d3455; color: var(--text); }
+    .rec-btn svg { width: 11px; height: 11px; }
+    .rec-btn.play-btn { color: var(--accent); border-color: rgba(59,130,246,0.3); background: rgba(59,130,246,0.1); }
+    .rec-btn.play-btn:hover { background: rgba(59,130,246,0.2); }
+    .rec-btn.dl-btn { color: var(--green); border-color: rgba(34,197,94,0.3); background: rgba(34,197,94,0.08); }
+    .rec-btn.dl-btn:hover { background: rgba(34,197,94,0.15); }
+    .rec-btn.del-btn { color: var(--red); border-color: rgba(239,68,68,0.25); background: rgba(239,68,68,0.06); }
+    .rec-btn.del-btn:hover { background: rgba(239,68,68,0.18); }
+
+    /* Waveform thumbnail inside card */
+    .rec-waveform-wrap {
+      background: #060810;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      height: 48px;
+      position: relative;
+      cursor: pointer;
+    }
+    .rec-waveform-canvas {
+      display: block;
+      width: 100%;
+      height: 48px;
+    }
+    .rec-waveform-label {
+      position: absolute;
+      top: 4px; left: 8px;
+      font-size: 9px;
+      color: var(--text3);
+      font-family: var(--mono);
+      letter-spacing: 0.05em;
+    }
+    /* Playhead line on waveform */
+    .rec-playhead {
+      position: absolute;
+      top: 0; bottom: 0;
+      width: 1px;
+      background: rgba(59,130,246,0.8);
+      left: 0%;
+      transition: left 0.1s linear;
+      pointer-events: none;
+    }
+
+    /* Mini audio player within rec card */
+    .rec-player { display: none; flex-direction: column; gap: 6px; }
+    .rec-player.visible { display: flex; }
+    .rec-progress-wrap {
+      position: relative;
+      height: 4px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 2px;
+      cursor: pointer;
+    }
+    .rec-progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      border-radius: 2px;
+      width: 0%;
+      transition: width 0.1s linear;
+    }
+    .rec-progress-dot {
+      width: 10px; height: 10px;
+      background: #fff;
+      border: 2px solid var(--accent);
+      border-radius: 50%;
+      position: absolute;
+      top: -3px;
+      left: 0%;
+      transform: translateX(-50%);
+      transition: left 0.1s linear;
+    }
+    .rec-time-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .rec-time { font-size: 10px; color: var(--text3); font-family: var(--mono); }
+    .rec-format-tag {
+      font-size: 9px;
+      font-family: var(--mono);
+      color: var(--accent2);
+      background: rgba(99,102,241,0.1);
+      border: 1px solid rgba(99,102,241,0.2);
+      border-radius: 4px;
+      padding: 1px 6px;
+    }
+
+    /* ─── SCROLLBAR ──────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+    /* ─── TOAST ──────────────────────────────────────────────────── */
+    #toast {
+      position: fixed;
+      bottom: 24px; right: 24px;
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: var(--radius);
+      padding: 10px 16px;
+      font-size: 12px;
+      color: var(--text);
+      box-shadow: var(--shadow);
+      opacity: 0;
+      transform: translateY(10px);
+      transition: opacity 0.25s, transform 0.25s;
+      z-index: 999;
+      pointer-events: none;
+    }
+    #toast.show { opacity: 1; transform: translateY(0); }
+
+    /* ─── RESPONSIVE ─────────────────────────────────────────────── */
+    @media (max-width: 900px) {
+      .hw-grid, .hw-grid2 { grid-template-columns: repeat(2, 1fr); }
+      .hw-cell:nth-child(2), .hw-cell2:nth-child(2) { border-right: none; }
+      .hw-cell:nth-child(1), .hw-cell:nth-child(2) { border-bottom: 1px solid var(--border); }
+      .quality-grid { grid-template-columns: repeat(2, 1fr); }
+      .waveform-body { flex-direction: column; }
+      .amplitude-panel { width: 100%; flex-direction: row; flex-wrap: wrap; gap: 8px; }
+    }
+    @media (max-width: 600px) {
+      .hw-grid, .hw-grid2 { grid-template-columns: 1fr 1fr; }
+      .quality-grid { grid-template-columns: 1fr 1fr; }
+      .topbar { padding: 0 12px; }
+      .brand-name { font-size: 13px; }
+      .nav-tab { padding: 0 10px; font-size: 12px; }
+    }
+  </style>
+</head>
+
+<body>
+
+<!-- ═══════════════════════════════════════════════════════ TOPBAR -->
+<header id="topbar">
+  <div class="brand">
+    <div class="brand-icon">🦅</div>
+    <div class="brand-text">
+      <div class="brand-name">FALCON</div>
+      <div class="brand-sub">ESP32-S3 Audio Monitor</div>
+    </div>
+  </div>
+
+  <nav class="nav-tabs">
+    <div class="nav-tab active" id="tab-live" role="tab" aria-selected="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Live Monitor
+    </div>
+  </nav>
+
+  <div class="topbar-right">
+    <div class="volume-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+      <input type="range" class="volume-slider" id="volSlider" min="0" max="100" value="60" aria-label="Volume" />
+    </div>
+
+    <button class="topbar-btn" id="testSigBtn" onclick="toggleTestSignal()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Test Signal
+    </button>
+
+    <div class="status-pill" id="deviceStatusPill">
+      <span class="status-dot offline" id="deviceStatusDot"></span>
+      <span id="deviceStatusText">Device Offline</span>
+    </div>
+
+    <button class="icon-btn" title="Settings" aria-label="Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+    </button>
+  </div>
+</header>
+
+<!-- ═══════════════════════════════════════════════════════ LIVE TAB -->
+<section class="tab-page active" id="page-live">
+  <div class="page-inner">
+
+    <!-- Hardware Endpoint -->
+    <div class="card" id="hw-card">
+      <div class="hw-label">Hardware Endpoint</div>
+      <div class="hw-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        ESP32-S3-FALCON
+      </div>
+
+      <div class="hw-status">
+        <div class="hw-badge disconnected" id="hwConnBadge">
+          <span class="dot"></span>
+          <span id="hwConnText">Disconnected</span>
+        </div>
+        <div class="hw-badge idle" id="hwStreamBadge">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          <span id="hwStreamText">Stream Idle</span>
+        </div>
+      </div>
+
+      <div class="hw-grid">
+        <div class="hw-cell">
+          <div class="hw-cell-label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+            Microphone
+          </div>
+          <div class="hw-cell-value">INMP441 (Digital MEMS I2S)</div>
+          <div class="hw-cell-sub">I2S Digital MEMS</div>
+        </div>
+        <div class="hw-cell">
+          <div class="hw-cell-label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            Sample Rate
+          </div>
+          <div class="hw-cell-value">16.0 kHz</div>
+          <div class="hw-cell-sub">16-bit Mono PCM</div>
+        </div>
+        <div class="hw-cell">
+          <div class="hw-cell-label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+            Device IP
+          </div>
+          <div class="hw-cell-value" id="deviceIP">Not assigned</div>
+          <div class="hw-cell-sub">Wi-Fi 802.11b/g/n</div>
+        </div>
+        <div class="hw-cell" style="border-right:none">
+          <div class="hw-cell-label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            Stream Duration
+          </div>
+          <div class="hw-cell-value" id="streamDuration">00:00.0</div>
+          <div class="hw-cell-sub">Active session time</div>
+        </div>
+      </div>
+
+      <div class="hw-grid2">
+        <div class="hw-cell2">
+          <div class="hw-cell2-label">Packets Received</div>
+          <div class="hw-cell2-value accent" id="packetsRx">0</div>
+          <div class="hw-cell2-sub" id="pktRate">0 pkt/s</div>
+        </div>
+        <div class="hw-cell2">
+          <div class="hw-cell2-label">Payload Ingested</div>
+          <div class="hw-cell2-value accent" id="payloadIngested">0 B</div>
+          <div class="hw-cell2-sub">32ms / chunk (512 smp)</div>
+        </div>
+        <div class="hw-cell2">
+          <div class="hw-cell2-label">Packet Loss</div>
+          <div class="hw-cell2-value accent" id="pktLoss">0.0%</div>
+          <div class="hw-cell2-sub" id="missedSeq">0 missed seq</div>
+        </div>
+        <div class="hw-cell2" style="border-right:none">
+          <div class="hw-cell2-label">Last Frame Arrived</div>
+          <div class="hw-cell2-value" id="lastFrame">Never</div>
+          <div class="hw-cell2-sub">Awaiting sync</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Action bar -->
+    <div class="action-bar card" style="padding: 10px 16px;">
+      <button class="btn btn-record" id="recordBtn" onclick="toggleRecord()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+        Record PCM Stream
+      </button>
+      <button class="btn btn-secondary" id="speakerBtn" onclick="toggleSpeaker()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+        Speaker Live
+      </button>
+      <button class="btn btn-secondary" onclick="resetCounters()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        Reset Counters
+      </button>
+      <div class="action-spacer"></div>
+      <button class="btn btn-primary" onclick="disconnectGateway()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        Disconnect Gateway
+      </button>
+      <button class="btn btn-primary" id="injectBtn" onclick="injectTestSignal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        Inject Test Signal
+      </button>
+    </div>
+
+    <!-- Waveform card -->
+    <div class="card">
+      <div class="waveform-header">
+        <div class="waveform-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          Live Audio Waveform
+        </div>
+        <div class="mode-tabs">
+          <div class="mode-tab active" id="modeOscillo" onclick="setMode('oscilloscope')">Oscilloscope</div>
+          <div class="mode-tab" id="modeRolling" onclick="setMode('rolling')">Rolling Activity (60s)</div>
+        </div>
+        <div class="wf-controls">
+          <div class="tw-select">
+            Time Window:
+            <select id="twSelect" onchange="setTimeWindow(this.value)">
+              <option value="16">16 ms (256 smp)</option>
+              <option value="32">32 ms (512 smp)</option>
+              <option value="64" selected>64 ms (1024 smp)</option>
+              <option value="128">128 ms (2048 smp)</option>
+            </select>
+          </div>
+          <button class="freeze-btn" id="freezeBtn" onclick="toggleFreeze()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M19.07 4.93L4.93 19.07"/></svg>
+            Freeze
+          </button>
+        </div>
+      </div>
+
+      <div class="waveform-body">
+        <div class="canvas-wrap">
+          <canvas id="waveCanvas" width="1200" height="200"></canvas>
+          <div class="no-stream-label" id="noStreamLabel">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+            No Stream Data
+          </div>
+          <span class="canvas-tspan" id="canvasTSpan">T-Span: 64ms</span>
+        </div>
+
+        <div class="amplitude-panel">
+          <div class="amp-title">Amplitude Levels</div>
+          <div>
+            <div class="amp-row">
+              <span class="amp-row-label">RMS Signal</span>
+              <span class="amp-row-val" id="rmsVal">–96.0 dBFS</span>
+            </div>
+            <div class="amp-bar-wrap" style="margin-top:5px;">
+              <div class="amp-bar" id="rmsBar" style="width:0%"></div>
+            </div>
+          </div>
+          <div>
+            <div class="amp-row">
+              <span class="amp-row-label">Peak Amplitude</span>
+              <span class="amp-row-val" id="peakVal">0%</span>
+            </div>
+            <div class="amp-bar-wrap" style="margin-top:5px;">
+              <div class="amp-bar" id="peakBar" style="width:0%; background:linear-gradient(90deg,#22c55e,#84cc16)"></div>
+            </div>
+          </div>
+          <div class="amp-ref">
+            <div class="amp-ref-row"><span>0 dBFS (Clip limit)</span><span>32,767</span></div>
+            <div class="amp-ref-row"><span>–12 dBFS (Nominal Speech)</span><span>8,288</span></div>
+            <div class="amp-ref-row"><span>–36 dBFS (Ambient Floor)</span><span>512</span></div>
+          </div>
+          <div class="quant-row">
+            <span>Quantization:</span>
+            <span>Signed 16-bit</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quality card -->
+    <div class="quality-card">
+      <div class="quality-header">
+        <div class="quality-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
+          Audio Stream Quality &amp; Invariants
+        </div>
+        <div class="quality-target">Target: <span>Hello ISRO Wake-Word Engine</span></div>
+      </div>
+
+      <div class="quality-grid">
+        <div class="quality-cell">
+          <div class="quality-cell-label">Sampling Frequency</div>
+          <div class="quality-cell-value">16,000 Hz <span class="check">✓</span></div>
+          <div class="quality-cell-sub">16 kHz Speech DSP Standard</div>
+        </div>
+        <div class="quality-cell">
+          <div class="quality-cell-label">Quantization Format</div>
+          <div class="quality-cell-value">16-bit Linear PCM <span class="check">✓</span></div>
+          <div class="quality-cell-sub">Signed Little-Endian</div>
+        </div>
+        <div class="quality-cell">
+          <div class="quality-cell-label">Channel Layout</div>
+          <div class="quality-cell-value">1 Channel (Mono) <span class="check">✓</span></div>
+          <div class="quality-cell-sub">I2S Left Channel (L/R GND)</div>
+        </div>
+        <div class="quality-cell">
+          <div class="quality-cell-label">Transport Integrity</div>
+          <div class="quality-cell-value" id="transportIntegrity">0.0% Loss <span class="check">✓</span></div>
+          <div class="quality-cell-sub" id="transportSub">0 dropped / 0 rcvd</div>
+        </div>
+      </div>
+
+      <div class="pipeline-box">
+        <div class="pipeline-box-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          Pipeline Verification for "Hello ISRO" Activator:
+        </div>
+        <div class="pipeline-box-text">
+          The INMP441 digital MEMS microphone streams at <em>16,000 Hz, 16-bit mono</em> provides the exact Nyquist bandwidth (0–8 kHz) required by micro wake-word models
+          (such as <em>TensorFlow Lite for Microcontrollers / ESP-SR / Edge Impulse</em>) without requiring server-side resampling or channel downmixing.
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════ PREVIOUS READINGS SECTION ══════════════════ -->
+    <div class="card" id="prev-readings-section" style="margin-top:4px;">
+      <div class="rec-header">
+        <div class="rec-header-title">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+          Previous Readings
+        </div>
+        <span class="rec-count-badge" id="recCountBadge">0 files</span>
+        <button class="rec-refresh-btn" id="recRefreshBtn" onclick="refreshRecordings()" title="Refresh recordings list">
+          <svg id="recRefreshIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          Refresh
+        </button>
+      </div>
+      <div class="rec-storage-note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Stored on server filesystem · Uploaded via ESP32 over Wi-Fi · Auto-refreshes every 10s
+      </div>
+      <div id="recListContainer">
+        <!-- populated by JS -->
+        <div class="rec-empty" id="recEmpty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 19V6l12-3v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="15" r="3"/></svg>
+          <div class="rec-empty-title">No previous readings yet</div>
+          <div class="rec-empty-sub">Recordings uploaded from the ESP32-S3 microphone will appear here. Click "Record PCM Stream" above to capture audio.</div>
+        </div>
+        <div class="rec-list" id="recList"></div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ═══════════════════════════════════════════════════════ TOAST -->
+<div id="toast" role="status" aria-live="polite"></div>
+
+<!-- ═══════════════════════════════════════════════════════ SCRIPTS -->
+<script>
+  /* ──────────────── STATE ──────────────────────────────────────── */
+  let currentTab    = 'live';
+  let frozen        = false;
+  let testSigActive = false;
+  let recording     = false;
+  let speaking      = false;
+  let waveMode      = 'oscilloscope';
+  let timeWindowMs  = 64;
+  let animId        = null;
+
+  // Simulated stream state
+  let packetsRx    = 0;
+  let payloadBytes = 0;
+  let pktLossCount = 0;
+  let sessionStart = null;
+  let streamActive = false;
+  let lastFrameTime = null;
+  let pktTimer = null;
+
+  // Waveform buffer
+  const SAMPLE_RATE = 16000;
+  let waveBuffer = new Float32Array(4096).fill(0);
+  let wavePhase  = 0;
+
+  /* ──────────────── TAB SWITCHING (single tab – no-op kept for safety) ──── */
+  function switchTab(tab) {
+    // Recordings are now embedded in the live page – nothing to switch
+  }
+
+  /* ──────────────── TOAST ──────────────────────────────────────── */
+  let toastTimer = null;
+  function showToast(msg, dur = 2800) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), dur);
+  }
+
+  /* ──────────────── WAVEFORM CANVAS ───────────────────────────── */
+  const canvas = document.getElementById('waveCanvas');
+  const ctx    = canvas.getContext('2d');
+
+  function resizeCanvas() {
+    canvas.width  = canvas.offsetWidth  * window.devicePixelRatio;
+    canvas.height = canvas.offsetHeight * window.devicePixelRatio;
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+  }
+  window.addEventListener('resize', resizeCanvas);
+
+  function initCanvas() {
+    resizeCanvas();
+    synthWave();
+  }
+
+  // Initialize canvas after DOM is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initCanvas);
+  } else {
+    initCanvas();
+  }
+
+  function drawWave() {
+    const W = canvas.offsetWidth;
+    const H = canvas.offsetHeight;
+    ctx.clearRect(0, 0, W, H);
+
+    // Grid
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x <= W; x += W/8) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+    for (let y = 0; y <= H; y += H/4) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+    // Centre line
+    ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+    ctx.beginPath(); ctx.moveTo(0,H/2); ctx.lineTo(W,H/2); ctx.stroke();
+
+    if (!streamActive && !testSigActive) return;
+
+    const samples = Math.floor(timeWindowMs * SAMPLE_RATE / 1000);
+    const step = W / samples;
+
+    ctx.beginPath();
+    const grad = ctx.createLinearGradient(0, 0, W, 0);
+    grad.addColorStop(0,   '#3b82f6');
+    grad.addColorStop(0.5, '#818cf8');
+    grad.addColorStop(1,   '#6366f1');
+    ctx.strokeStyle = grad;
+    ctx.lineWidth   = 1.5;
+    ctx.shadowColor = 'rgba(99,102,241,0.5)';
+    ctx.shadowBlur  = 4;
+
+    for (let i = 0; i < samples; i++) {
+      const idx = (waveBuffer.length - samples + i + waveBuffer.length) % waveBuffer.length;
+      const v   = waveBuffer[idx];
+      const x   = i * step;
+      const y   = H/2 - v * (H/2 - 4);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Clipping overlay
+    ctx.fillStyle = 'rgba(239,68,68,0.08)';
+    ctx.fillRect(0, 0, W, 4);
+    ctx.fillRect(0, H-4, W, 4);
+  }
+
+  function synthWave() {
+    if (!frozen) {
+      const freq = testSigActive ? 440 : 600 + Math.random() * 200;
+      const amp  = testSigActive ? 0.7 : 0.25 + Math.random() * 0.1;
+      const chunk = 64;
+      for (let i = 0; i < chunk; i++) {
+        wavePhase += (2 * Math.PI * freq) / SAMPLE_RATE;
+        const noise = (Math.random() - 0.5) * (testSigActive ? 0.02 : 0.08);
+        waveBuffer.copyWithin(0, 1);
+        waveBuffer[waveBuffer.length - 1] = Math.sin(wavePhase) * amp + noise;
+      }
+      updateAmplitude();
+    }
+    drawWave();
+    animId = requestAnimationFrame(synthWave);
+  }
+
+  function updateAmplitude() {
+    if (!streamActive && !testSigActive) {
+      document.getElementById('rmsVal').textContent = '–96.0 dBFS';
+      document.getElementById('rmsBar').style.width = '0%';
+      document.getElementById('peakVal').textContent = '0%';
+      document.getElementById('peakBar').style.width = '0%';
+      return;
+    }
+    const slice = waveBuffer.slice(-512);
+    const rms = Math.sqrt(slice.reduce((a,v)=>a+v*v,0)/slice.length);
+    const peak = Math.max(...slice.map(Math.abs));
+    const dbfs = rms > 0 ? 20 * Math.log10(rms) : -96;
+    const dbClamped = Math.max(-60, Math.min(0, dbfs));
+    const rmsPercent = ((dbClamped + 60) / 60) * 100;
+    const peakPercent = peak * 100;
+    document.getElementById('rmsVal').textContent = dbfs.toFixed(1) + ' dBFS';
+    document.getElementById('rmsBar').style.width  = rmsPercent.toFixed(1) + '%';
+    document.getElementById('peakVal').textContent = peakPercent.toFixed(0) + '%';
+    document.getElementById('peakBar').style.width = Math.min(peakPercent,100).toFixed(1) + '%';
+  }
+
+  // synthWave() is now called from initCanvas() after DOM is ready
+
+  /* ──────────────── STREAM SIMULATION ─────────────────────────── */
+  function startStream() {
+    streamActive = true;
+    sessionStart = Date.now();
+    document.getElementById('noStreamLabel').style.display = 'none';
+    document.getElementById('hwConnBadge').className = 'hw-badge connected';
+    document.getElementById('hwConnText').textContent = 'Connected';
+    document.getElementById('hwStreamBadge').className = 'hw-badge connected';
+    document.getElementById('hwStreamText').textContent = 'Stream Active';
+    document.getElementById('deviceStatusDot').className = 'status-dot online';
+    document.getElementById('deviceStatusText').textContent = 'Device Online';
+    document.getElementById('deviceIP').textContent = '192.168.1.' + (100 + Math.floor(Math.random()*50));
+    lastFrameTime = Date.now();
+
+    pktTimer = setInterval(() => {
+      if (!streamActive) return;
+      packetsRx++;
+      payloadBytes += 1024;
+      lastFrameTime = Date.now();
+      document.getElementById('packetsRx').textContent = packetsRx;
+      document.getElementById('payloadIngested').textContent = formatBytes(payloadBytes);
+      document.getElementById('pktRate').textContent = '31.25 pkt/s';
+      document.getElementById('lastFrame').textContent = 'Just now';
+      const elapsed = (Date.now() - sessionStart) / 1000;
+      const m = Math.floor(elapsed/60).toString().padStart(2,'0');
+      const s = (elapsed%60).toFixed(1).padStart(4,'0');
+      document.getElementById('streamDuration').textContent = m + ':' + s;
+    }, 32);
+  }
+
+  function stopStream() {
+    streamActive = false;
+    clearInterval(pktTimer);
+    document.getElementById('hwConnBadge').className = 'hw-badge disconnected';
+    document.getElementById('hwConnText').textContent = 'Disconnected';
+    document.getElementById('hwStreamBadge').className = 'hw-badge idle';
+    document.getElementById('hwStreamText').textContent = 'Stream Idle';
+    document.getElementById('deviceStatusDot').className = 'status-dot offline';
+    document.getElementById('deviceStatusText').textContent = 'Device Offline';
+    document.getElementById('noStreamLabel').style.display = '';
+    waveBuffer.fill(0);
+    updateAmplitude();
+  }
+
+  function formatBytes(b) {
+    if (b < 1024) return b + ' B';
+    if (b < 1024*1024) return (b/1024).toFixed(1) + ' KB';
+    return (b/(1024*1024)).toFixed(2) + ' MB';
+  }
+
+  /* ──────────────── CONTROLS ───────────────────────────────────── */
+  function toggleRecord() {
+    recording = !recording;
+    const btn = document.getElementById('recordBtn');
+    if (recording) {
+      btn.classList.add('recording');
+      btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg> Stop Recording`;
+      startStream();
+      showToast('🔴 Recording PCM stream…');
+    } else {
+      btn.classList.remove('recording');
+      btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg> Record PCM Stream`;
+      stopStream();
+      showToast('⏹ Recording stopped');
+    }
+  }
+
+  function toggleSpeaker() {
+    speaking = !speaking;
+    const btn = document.getElementById('speakerBtn');
+    btn.textContent = speaking ? '🔊 Speaker Off' : '🔉 Speaker Live';
+    showToast(speaking ? '🔊 Speaker output enabled' : '🔇 Speaker output disabled');
+  }
+
+  function resetCounters() {
+    packetsRx = 0; payloadBytes = 0; pktLossCount = 0; sessionStart = Date.now();
+    document.getElementById('packetsRx').textContent = '0';
+    document.getElementById('payloadIngested').textContent = '0 B';
+    document.getElementById('pktLoss').textContent = '0.0%';
+    document.getElementById('missedSeq').textContent = '0 missed seq';
+    document.getElementById('pktRate').textContent = '0 pkt/s';
+    document.getElementById('streamDuration').textContent = '00:00.0';
+    showToast('↺ Counters reset');
+  }
+
+  function disconnectGateway() {
+    if (recording) toggleRecord();
+    stopStream();
+    showToast('⚡ Gateway disconnected');
+  }
+
+  function injectTestSignal() {
+    testSigActive = !testSigActive;
+    const btn = document.getElementById('injectBtn');
+    if (testSigActive) {
+      btn.style.background = 'rgba(245,158,11,0.2)';
+      btn.style.color = '#f59e0b';
+      btn.style.borderColor = 'rgba(245,158,11,0.4)';
+      document.getElementById('noStreamLabel').style.display = 'none';
+      showToast('⚡ Injecting 440 Hz test tone');
+    } else {
+      btn.style.background = '';
+      btn.style.color = '';
+      btn.style.borderColor = '';
+      if (!streamActive) {
+        waveBuffer.fill(0);
+        document.getElementById('noStreamLabel').style.display = '';
+      }
+      showToast('Test signal removed');
+    }
+  }
+
+  function toggleTestSignal() {
+    injectTestSignal();
+  }
+
+  function toggleFreeze() {
+    frozen = !frozen;
+    const btn = document.getElementById('freezeBtn');
+    btn.classList.toggle('frozen', frozen);
+    // Update button label safely
+    const label = frozen ? ' Unfreeze' : ' Freeze';
+    if (btn.lastChild && btn.lastChild.nodeType === Node.TEXT_NODE) {
+      btn.lastChild.textContent = label;
+    } else {
+      btn.textContent = btn.textContent.replace(/Freeze|Unfreeze/, label.trim());
+    }
+    showToast(frozen ? '❄ Waveform frozen' : '▶ Waveform resumed');
+  }
+
+  function setMode(mode) {
+    waveMode = mode;
+    document.getElementById('modeOscillo').classList.toggle('active', mode === 'oscilloscope');
+    document.getElementById('modeRolling').classList.toggle('active', mode === 'rolling');
+  }
+
+  function setTimeWindow(val) {
+    timeWindowMs = parseInt(val);
+    document.getElementById('canvasTSpan').textContent = 'T-Span: ' + val + 'ms';
+  }
+
+  /* ──────────────── RECORDINGS API ────────────────────────────── */
+  let currentAudio = null;
+  let currentRecId = null;
+  let recPollTimer  = null;
+
+  async function loadRecordings(silent = false) {
+    const list  = document.getElementById('recList');
+    const empty = document.getElementById('recEmpty');
+    const badge = document.getElementById('recCountBadge');
+    if (!silent) list.innerHTML = '';
+    try {
+      const resp = await fetch('/api/recordings');
+      const data = await resp.json();
+      badge.textContent = data.length + ' file' + (data.length !== 1 ? 's' : '');
+      if (!data.length) {
+        empty.style.display = '';
+        if (!silent) list.innerHTML = '';
+        return;
+      }
+      empty.style.display = 'none';
+      // On silent refresh only add new cards (avoid rebuilding playing card)
+      if (silent) {
+        const existing = new Set([...list.querySelectorAll('.rec-card')].map(c => c.dataset.recId));
+        data.forEach(rec => {
+          if (!existing.has(rec.id)) {
+            list.insertBefore(buildRecCard(rec), list.firstChild);
+          }
+        });
+      } else {
+        data.forEach(rec => list.appendChild(buildRecCard(rec)));
+        // Draw waveform thumbnails after cards exist
+        data.forEach(rec => drawWaveformThumb(rec.id));
+      }
+    } catch (e) {
+      empty.style.display = '';
+      empty.querySelector('.rec-empty-title').textContent = 'Error loading recordings';
+      empty.querySelector('.rec-empty-sub').textContent = 'Could not connect to the backend API.';
+    }
+  }
+
+  async function refreshRecordings() {
+    const btn  = document.getElementById('recRefreshBtn');
+    const icon = document.getElementById('recRefreshIcon');
+    btn.classList.add('spinning');
+    await loadRecordings();
+    // Redraw thumbnails after refresh
+    document.querySelectorAll('.rec-waveform-canvas').forEach(c => {
+      drawWaveformThumb(c.dataset.recId);
+    });
+    setTimeout(() => btn.classList.remove('spinning'), 600);
+    showToast('↺ Recordings refreshed');
+  }
+
+  async function deleteRecording(id) {
+    if (!confirm('Delete this recording? This cannot be undone.')) return;
+    const card = document.getElementById('reccard-' + id);
+    if (card) card.classList.add('deleting');
+    try {
+      const resp = await fetch('/api/recordings/' + id, { method: 'DELETE' });
+      if (resp.ok) {
+        if (currentRecId === id) { stopPlayRec(id); }
+        if (card) card.remove();
+        showToast('🗑 Recording deleted');
+        // update count badge
+        const remaining = document.querySelectorAll('.rec-card').length;
+        document.getElementById('recCountBadge').textContent = remaining + ' file' + (remaining !== 1 ? 's' : '');
+        if (remaining === 0) document.getElementById('recEmpty').style.display = '';
+      } else {
+        if (card) card.classList.remove('deleting');
+        const err = await resp.json().catch(() => ({ error: 'Unknown error' }));
+        showToast('⚠ Delete failed: ' + (err.error || resp.status));
+      }
+    } catch (e) {
+      if (card) card.classList.remove('deleting');
+      showToast('⚠ Network error during delete');
+    }
+  }
+
+  /* Fake waveform thumbnail generator (decorative bars based on recording id hash) */
+  function drawWaveformThumb(recId) {
+    const canvas = document.getElementById('wthumb-' + recId);
+    if (!canvas) return;
+    const W = canvas.offsetWidth || canvas.parentElement.offsetWidth || 300;
+    const H = 48;
+    canvas.width  = W * window.devicePixelRatio;
+    canvas.height = H * window.devicePixelRatio;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    ctx.clearRect(0, 0, W, H);
+
+    // Subtle grid
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.lineWidth = 1;
+    [H*0.25, H*0.5, H*0.75].forEach(y => {
+      ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
+    });
+
+    // Generate deterministic pseudo-random waveform from id
+    let seed = 0;
+    for (let i = 0; i < recId.length; i++) seed = (seed * 31 + recId.charCodeAt(i)) & 0xffffffff;
+    const lcg = () => { seed = (seed * 1664525 + 1013904223) & 0xffffffff; return (seed >>> 0) / 0xffffffff; };
+
+    const bars = Math.floor(W / 3);
+    const grad = ctx.createLinearGradient(0, 0, W, 0);
+    grad.addColorStop(0,   'rgba(59,130,246,0.7)');
+    grad.addColorStop(0.5, 'rgba(129,140,248,0.8)');
+    grad.addColorStop(1,   'rgba(99,102,241,0.7)');
+
+    ctx.fillStyle = grad;
+    for (let i = 0; i < bars; i++) {
+      const amp = 0.1 + lcg() * 0.85;
+      const bh  = amp * (H * 0.85);
+      const x   = i * 3;
+      const y   = (H - bh) / 2;
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(x, y, 2, bh, 1) : ctx.rect(x, y, 2, bh);
+      ctx.fill();
+    }
+  }
+
+  function buildRecCard(rec) {
+    const card = document.createElement('div');
+    card.className = 'rec-card';
+    card.id = 'reccard-' + rec.id;
+    card.dataset.recId = rec.id;
+
+    const date    = new Date(rec.created_at);
+    const dateStr = date.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })
+                  + ' · ' + date.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    const dur     = rec.duration_seconds + 's';
+    const size    = formatBytes(rec.size_bytes);
+    const totalMin = Math.floor(rec.duration_seconds/60);
+    const totalSec = Math.floor(rec.duration_seconds%60).toString().padStart(2,'0');
+
+    card.innerHTML = `
+      <div class="rec-card-header">
+        <div class="rec-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 19V6l12-3v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="15" r="3"/>
+          </svg>
+        </div>
+        <div class="rec-meta">
+          <div class="rec-name">Recording · ${dateStr}</div>
+          <div class="rec-id">${rec.id}</div>
+          <div class="rec-details">
+            <div class="rec-detail">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              Duration: <span>${dur}</span>
+            </div>
+            <div class="rec-detail">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>
+              Size: <span>${size}</span>
+            </div>
+            <div class="rec-detail">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+              16 kHz · 16-bit Mono PCM
+            </div>
+          </div>
+        </div>
+        <div class="rec-actions">
+          <button class="rec-btn play-btn" id="playbtn-${rec.id}" onclick="togglePlayRec('${rec.id}')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Play
+          </button>
+          <button class="rec-btn dl-btn" onclick="window.location='/api/recordings/${rec.id}/download'">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download
+          </button>
+          <button class="rec-btn del-btn" onclick="deleteRecording('${rec.id}')" title="Delete recording">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+            Delete
+          </button>
+        </div>
+      </div>
+
+      <!-- Waveform thumbnail -->
+      <div class="rec-waveform-wrap" onclick="togglePlayRec('${rec.id}')" title="Click to play">
+        <canvas class="rec-waveform-canvas" id="wthumb-${rec.id}" data-rec-id="${rec.id}" height="48"></canvas>
+        <span class="rec-waveform-label">PCM · 16 kHz · mono</span>
+        <div class="rec-playhead" id="wph-${rec.id}"></div>
+      </div>
+
+      <div class="rec-player" id="player-${rec.id}">
+        <div class="rec-progress-wrap" onclick="seekRec('${rec.id}', event)">
+          <div class="rec-progress-fill" id="pfill-${rec.id}"></div>
+          <div class="rec-progress-dot"  id="pdot-${rec.id}"></div>
+        </div>
+        <div class="rec-time-row">
+          <span class="rec-time" id="ptime-${rec.id}">0:00 / ${totalMin}:${totalSec}</span>
+          <span class="rec-format-tag">WAV · 16-bit</span>
+        </div>
+        <audio id="audio-${rec.id}" src="/api/recordings/${rec.id}/audio" preload="none"></audio>
+      </div>
+    `;
+
+    // wire audio events
+    setTimeout(() => {
+      const audio = document.getElementById('audio-' + rec.id);
+      if (!audio) return;
+      audio.addEventListener('timeupdate', () => updateRecProgress(rec.id, rec.duration_seconds));
+      audio.addEventListener('ended',      () => stopPlayRec(rec.id));
+    }, 50);
+
+    return card;
+  }
+
+  function togglePlayRec(id) {
+    // stop any currently playing
+    if (currentRecId && currentRecId !== id) stopPlayRec(currentRecId);
+
+    const audio  = document.getElementById('audio-' + id);
+    const player = document.getElementById('player-' + id);
+    const btn    = document.getElementById('playbtn-' + id);
+
+    if (!audio) return;
+
+    if (audio.paused) {
+      audio.play();
+      currentAudio = audio;
+      currentRecId = id;
+      player.classList.add('visible');
+      btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Pause`;
+    } else {
+      audio.pause();
+      btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Play`;
+    }
+  }
+
+  function stopPlayRec(id) {
+    const audio  = document.getElementById('audio-' + id);
+    const player = document.getElementById('player-' + id);
+    const btn    = document.getElementById('playbtn-' + id);
+    if (audio) { audio.pause(); audio.currentTime = 0; }
+    if (player) player.classList.remove('visible');
+    if (btn) btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Play`;
+    if (currentRecId === id) { currentRecId = null; currentAudio = null; }
+  }
+
+  function updateRecProgress(id, totalSec) {
+    const audio = document.getElementById('audio-' + id);
+    if (!audio) return;
+    const pct = totalSec > 0 ? (audio.currentTime / totalSec) * 100 : 0;
+    const fill = document.getElementById('pfill-' + id);
+    const dot  = document.getElementById('pdot-'  + id);
+    const time = document.getElementById('ptime-' + id);
+    const wph  = document.getElementById('wph-'   + id);
+    if (fill) fill.style.width = pct + '%';
+    if (dot)  dot.style.left  = pct + '%';
+    if (wph)  wph.style.left  = pct + '%';
+    if (time) {
+      const cur  = audio.currentTime;
+      const cm   = Math.floor(cur/60), cs = Math.floor(cur%60).toString().padStart(2,'0');
+      const tm   = Math.floor(totalSec/60), ts = Math.floor(totalSec%60).toString().padStart(2,'0');
+      time.textContent = cm + ':' + cs + ' / ' + tm + ':' + ts;
+    }
+  }
+
+  function seekRec(id, e) {
+    const audio = document.getElementById('audio-' + id);
+    if (!audio) return;
+    const wrap = e.currentTarget;
+    const pct  = e.offsetX / wrap.offsetWidth;
+    audio.currentTime = pct * audio.duration;
+  }
+
+  /* ──────────────── HEALTH POLL ────────────────────────────────── */
+  async function pollHealth() {
+    try {
+      const r = await fetch('/api/health');
+      if (r.ok) {
+        // backend alive — don't touch stream-specific UI
+      }
+    } catch (_) {}
+  }
+  setInterval(pollHealth, 10000);
+
+  /* Auto-refresh recordings every 10s (always visible on live page) */
+  setInterval(() => { loadRecordings(true); }, 10000);
+
+  /* Load recordings immediately on page load */
+  loadRecordings();
+
+  /* ──────────────── INIT ───────────────────────────────────────── */
+  // Volume slider gradient update
+  const volSlider = document.getElementById('volSlider');
+  volSlider.addEventListener('input', () => {
+    volSlider.style.background = `linear-gradient(to right, var(--accent) ${volSlider.value}%, rgba(255,255,255,0.15) ${volSlider.value}%)`;
+  });
+</script>
+
+</body>
+</html>
